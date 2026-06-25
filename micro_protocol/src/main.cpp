@@ -1,25 +1,14 @@
 // NOTE(denis): В примере они просто включены как файлы. 
-#include "micro_protocol.h"
-#include "micro_protocol.c"
-
 #include "stdio.h"
 
-// Не знаю как это сделать синтаксически, но щас проверим.
-#define MicroProtocolInitZero ((Micro_Protocol_Packet){(MICRO_PROTOCOL_DEFAULT_BUFFER), 0})
+// Header.
+#include "micro_protocol.h"
 
-typedef struct Micro_Protocol_Packet
-{
-    u8 *bytes;
-    size_t len;
-    /*
-    u8 *protobuf_buffer;
-    pb_ostream_t protobuf_ostream;
+// Source.
+#include "micro_protocol.c"
 
-    Telemetry telemetry;
-    */
-
-} Micro_Protocol_Packet;
-
+// NOTE(denis): На сколько я понимаю, то макрос, который содержит поля для типов называется всегда
+// _fields. Micro Protocol оринетируется на это.
 void get_test_telemetry_data(Telemetry *telemetry)
 {
     // Вручную заполняем структуру.
@@ -38,10 +27,10 @@ void get_test_telemetry_data(Telemetry *telemetry)
 
 void print_raw_packet(Micro_Protocol_Packet *packet)
 {
-    printf("Packet(%d bytes)", (int)packet->len);
-    for(int index = 0; index < packet->len; index++)
+    printf("Packet(%d bytes)", (int)packet->packet_buffer_len);
+    for(int index = 0; index < packet->packet_buffer_len; index++)
     {
-        printf("%02X ", packet->bytes[index]);
+        printf("%02X ", packet->packet_buffer[index]);
     }
 
     printf("\n");
@@ -49,33 +38,28 @@ void print_raw_packet(Micro_Protocol_Packet *packet)
 
 int main()
 {
+    // TODO(denis): ДУМАТЬ КАК ЭТО ВСЕ ОФОРМИТЬ С ПОМОЩЬЮ МАКРОСОВ И Т.Д.
     // Init этап для protobuf и 
     // Желательно это объеденить в однку команду.
     Telemetry telemetry = Telemetry_init_zero;
-    Micro_Protocol_Packet packet = MicroProtocolInitZero;
-
     // Этап с заполнением структуры телеметрии.
     get_test_telemetry_data(&telemetry);
 
-    // Вызываем протобаф, чтобы закодировать буфер.
-	u8 protobuf_buffer[MAX_PAYLOAD_SIZE] = {0};
+    // MICRO_PROTOCOL_DEFAULT_PACKET_BUFFER сейчас не работает в данный момент.
+    Micro_Protocol_Packet packet = {0};                                 // Добавить макрос init_zero???
+    MicroProtocolInitBuffersByDefault(packet);
+    MicroProtocolFillPacket(packet,                                     // Передаем только что созданный пакет.
+                            Telemetry,                                  // Тип структуры, которую будем кодировать.
+                            telemetry,                                  // Структура с данными.
+                            CMD_GT);                                    // Тип команды.
 
-    pb_ostream_t ostream = pb_ostream_from_buffer(protobuf_buffer, sizeof(protobuf_buffer));
-    bool status = pb_encode(&ostream, Telemetry_fields, &telemetry);
 
-    if(status)
-    {
-        printf("pb_encode was succesfull\n");
-        packet.len = micro_protocol_build_packet(packet.bytes, protobuf_buffer, ostream.bytes_written, CMD_GT);
-    }
-    else
-    {
-        // TODO(denis): придумать как можно нормально передавать ошибку.
-        // Мне не очень нравится, как это сейчас выглядит.
-        packet.len = micro_protocol_build_packet(packet.bytes, (const u8*)"ERROR\r\n", strlen("ERROR\r\n"), CMD_GT);
-    }
-    
-    // Здесь должен быть код передачи данных на другое устройство.
+    // Это так же макрос. Он обертывает изначаtьный вызов micro_protocol_build_packet.
+    // Изначально он нужен был для того, чтоб не писать лишнюю проверку if(status).
+    // Макрос сам при случае ошибки отправит данные с ERROR.
+    // Длинна записанного пакета хранится в packet.len
+    MicroProtocolBuildPacket(packet);
+
     print_raw_packet(&packet);
 
     return 0;

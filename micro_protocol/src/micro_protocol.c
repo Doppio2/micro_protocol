@@ -1,15 +1,8 @@
-#include "micro_protocol.h"
 #include "assert.h"
 
 // NOTE(denis): я думаю как лучше положить эти файлики.
 // Пока что они будут тут включены просто как source файлы.
 // Но это временно.
-
-// Header.
-#include "nanopb/message.pb.h"
-#include "nanopb/pb_encode.h"
-#include "nanopb/pb_decode.h"
-#include "nanopb/pb_common.h"
 
 // Source.
 #include "nanopb/message.pb.c"
@@ -54,34 +47,10 @@ static const u16 crc_table[256] =
     0x8201,0x42C0,0x4380,0x8341,0x4100,0x81C1,0x8081,0x4040
 };
 
-u16 crc16(const u8 *data, size_t len)
-{
-	u16 crc = 0xFFFF; // Инициализация CRC
-
-	for (size_t i = 0; i < len; i++)
-	{
-		crc ^= (uint16_t)data[i]; // XOR с текущим байтом
-
-		for (uint8_t j = 0; j < 8; j++)
-		{
-			if (crc & 0x0001)
-			{				   // Если младший бит = 1
-				crc >>= 1;	   // Сдвиг вправо
-				crc ^= 0xA001; // XOR с полиномом
-			}
-			else
-			{
-				crc >>= 1; // Просто сдвиг
-			}
-		}
-	}
-
-	return crc;
-}
 
 // NOTE(denis): версия с использованием lookup таблицы.
 // Я понятия не имею как это работает.... Но работает быстрее.
-u16 crc16_lookup_table(const u8 *data, size_t len)
+u16 crc16(const u8 *data, size_t len)
 {
 	u16 crc = 0xFFFF; // Инициализация CRC
 
@@ -179,7 +148,7 @@ size_t micro_protocol_build_packet(u8 *packet_buffer, const u8 *protobuf_data,
     }
 
     // 5. Вычисляем CRC16 контрольную сумму от всего загаловка + полезной нагрузки.
-    u16 crc = crc16_lookup_table(packet_buffer, (buffer - packet_buffer));
+    u16 crc = crc16(packet_buffer, (buffer - packet_buffer));
 
 	// 6. Записываем CRC в конец пакета.
 	buffer[0] = (u8)(crc & 0xFF);		   // Low byte CRC

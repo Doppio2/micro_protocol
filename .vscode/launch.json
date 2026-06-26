@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Launch Executable",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/micro_protocol/build/example",
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "MIMode": "gdb"
+        }
+    ]
+}

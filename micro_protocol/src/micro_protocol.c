@@ -50,7 +50,7 @@ static const u16 crc_table[256] =
 
 // NOTE(denis): версия с использованием lookup таблицы.
 // Я понятия не имею как это работает.... Но работает быстрее.
-u16 crc16(const u8 *data, size_t len)
+inline u16 crc16(const u8 *data, size_t len)
 {
 	u16 crc = 0xFFFF; // Инициализация CRC
 
@@ -63,45 +63,28 @@ u16 crc16(const u8 *data, size_t len)
     return crc;
 }
 
-/**
- * @brief Парсинг пакета данных в соответствии со структурой:
- * [SyncSeq (напр., "ROV")][Length (2 байта)][Type][ProtobufData][CRC (2 байта)]
- * |		    	HEADER			        |		PAYLOAD  	 |
- * @param packet указатель на пришедший пакета
- * @param packet_len длина пришедшего пакета
- * @param payload_len запишется длина блока данных PAYLOAD
- * @return указатель на начало блока PAYLOAD. NULL в случае ошибки
- */
-u8 *micro_protocol_packet_parsing(u8 *packet, size_t packet_len, 
-                                  size_t *payload_len)
+static inline uint8_t *find_sync_sequence(uint8_t *buffer, size_t buffer_len)
 {
-    assert("NOT FINISHED" && false);
-    return 0;
-}
+    if(buffer_len < SYNC_SEQ_BYTES)
+    {
+        return NULL;
+    }
 
-/**
- * @brief Извлекает указатель на данныеиз полезной нагрузки данные в соответствии со структурой пакета
- * @param payload указатель на блок полезных данных
- * @param payload_len длина PAYLOAD
- * @param protobuf_data_len запишется длина блока данных
- * @return указатель на данные
- */
-u8 *micro_protocol_get_data_point_from_payload(u8 *payload, size_t payload_len, 
-                                               size_t protobuf_data_len)
-{
-    assert("NOT FINISHED" && false);
-    return 0;
-}
+    // NOTE(denis): я не уверен, заинлайнит ли компилятор memcpy,
+    // поэтому я просто лучше проверю вручную.
+    for(size_t index = 0; 
+        index <= buffer_len - SYNC_SEQ_BYTES; 
+        index++)
+    {
+        if(buffer[index] == SYNC_SEQ[0] &&
+           buffer[index+1] == SYNC_SEQ[1] &&
+           buffer[index+2] == SYNC_SEQ[2])
+        {
+            return &buffer[index];
+        }
+    }
 
-/**
- * @brief Рассчитывает длину пакета согласно протоколу
- * @param protobuf_data длина данных в полезной нагрузке (без типа пакета)
- * @return длина пакета. 0 в случае ошибки
- */
-size_t micro_protocol_get_packet_size(size_t protobuf_data)
-{
-    assert("NOT FINISHED" && false);
-    return 0;
+    return NULL;
 }
 
 /**
@@ -156,4 +139,107 @@ size_t micro_protocol_build_packet(u8 *packet_buffer, const u8 *protobuf_data,
 	buffer += CRC16_BYTES;
 
 	return (u16)(buffer - packet_buffer); // Возвращаем общую длину пакета
+}
+
+/**
+ * @brief Парсинг пакета данных в соответствии со структурой:
+ * [SyncSeq (напр., "ROV")][Length (2 байта)][Type][ProtobufData][CRC (2 байта)]
+ * |		    	HEADER			        |		PAYLOAD  	 |
+ * @param packet указатель на пришедший пакета
+ * @param packet_len длина пришедшего пакета
+ * @param payload_len запишется длина блока данных PAYLOAD
+ * @return указатель на начало блока PAYLOAD. NULL в случае ошибки
+ */
+u8 *micro_protocol_packet_parsing(u8 *packet, size_t packet_len, 
+                                  size_t *payload_len)
+{
+    printf("Bytes read: %ld\n", packet_len);
+    // Порядок байтов Little endian.
+
+    // 1. Проверяем длинну принятых байт.
+    if(packet_len < MIN_PACKET_SIZE || packet_len > MAX_PACKET_SIZE)
+    {
+        return NULL;
+    }
+
+    // 2. Ищем синхропосылку.
+    u8 *sync_pos = find_sync_sequence(packet, packet_len);
+    if(!sync_pos)
+    {
+        return NULL;
+    }
+    u8 *current_packet_pos = sync_pos;      // Обновляем указатель на начало данных до начала синхропосылки.
+
+    // 3. Размер доступных байт пакета.
+    size_t packet_bytes_available = packet_len - (sync_pos - packet);
+    // 4. Проверяем текущую длинну пакета. Она должна быть размером с HEADER_SIZE
+	if(packet_bytes_available < HEADER_SIZE)
+    {
+		return NULL;
+    }
+
+	// 5. Читаем длину блока полезных данных PAYLOAD, включающий тип пакета и бинарные данные в формате Protobuf
+    // payload_len мы передали как указатель в функцию
+    *payload_len = (current_packet_pos[4] << 8) | current_packet_pos[3];      // Length_LowByte_Length_HighByte
+	size_t total_packet_len = HEADER_SIZE + *payload_len + CRC16_BYTES;
+
+    // 6. Если нам доступно меньше, чем общая длинна пакета, то 
+    // возвращаем NULL.
+    if(packet_bytes_available < total_packet_len)
+    {
+        return NULL;
+    }
+
+    // 7. Вычисляем и получаем crc пакета.
+    u8 *crc_start = current_packet_pos + HEADER_SIZE + *payload_len;
+	u16 received_crc = (crc_start[1] << 8) | crc_start[0];
+
+    // 8. Вычисляем crc пакета. Контрольная сумма должна совпадать.
+    u16 calcuated_crc = crc16(current_packet_pos, HEADER_SIZE + *payload_len);
+    if(received_crc != calcuated_crc)
+    {
+        return NULL;
+    }
+
+    // 9. Возвращаем указатель на начало блока payload.
+    u8 *payload = current_packet_pos + HEADER_SIZE; 
+
+    return payload;
+}
+
+/**
+ * @brief Извлекает указатель на данныеиз полезной нагрузки данные в соответствии со структурой пакета
+ * @param payload указатель на блок полезных данных
+ * @param payload_len длина PAYLOAD
+ * @param protobuf_data_len запишется длина блока данных
+ * @return указатель на данные
+ */
+inline u8 *micro_protocol_get_data_point_from_payload(u8 *payload, size_t payload_len, 
+                                               size_t *protobuf_data_len)
+{
+    if(payload_len <= 2 || payload == NULL)
+    {
+        return NULL;
+    }
+
+    *protobuf_data_len = payload_len - TYPE_BYTES;
+    return payload + TYPE_BYTES;
+}
+
+// NOTE(denis): в примере окружения было 0 вызовов.
+// Я не знаю используется ли это где-то в проекте или нет.
+/**
+ * @brief Рассчитывает длину пакета согласно протоколу
+ * @param data_len длина данных в полезной нагрузке (без типа пакета)
+ * @return длина пакета. 0 в случае ошибки
+ */
+inline size_t micro_protocol_get_packet_size(size_t data_len)
+{
+    size_t len = HEADER_SIZE + (TYPE_BYTES + data_len) + CRC16_BYTES;
+    if(len > MAX_PACKET_SIZE)
+    {
+        return 0;
+    }
+
+    return 0;
 }

@@ -51,7 +51,7 @@
     (packet).protobuf_buffer_size = sizeof(MICRO_PROTOCOL_DEFAULT_PAYLOAD_BUFFER)  \
 )                                                                                  \
 
-// NOTE(denis): хэлперы для build_packet.
+// NOTE(denis): Заполнение структуры
 #define MicroProtocolFillPacket(packet, type, data_struct, command)                                                  \
 (                                                                                                                    \
     ((packet).command_type) = (command),                                                                             \
@@ -59,17 +59,18 @@
     ((packet).status = pb_encode(&(packet).protobuf_ostream, type##_fields, &(data_struct)))                         \
 )
 
-#define MicroProtocolBuildPacket(packet)                                                                                                              \
-(                                                                                                                                                     \
-    ((packet).status)                                                                                                                                 \
-    ?                                                                                                                                                 \
-    (                                                                                                                                                 \
-        (packet).packet_buffer_len = micro_protocol_build_packet((packet).packet_buffer, (packet).protobuf_buffer, (packet).protobuf_ostream.bytes_written, (packet).command_type)   \
-    )                                                                                                                                                 \
-    :                                                                                                                                                 \
-    (                                                                                                                                                 \
-        (packet).packet_buffer_len = micro_protocol_build_packet((packet).packet_buffer, (const u8*)"ERROR\r\n", strlen("ERROR\r\n"), (packet).command_type)                \
-    )                                                                                                                                                 \
+// Сборка пакета.
+#define MicroProtocolBuildPacket(packet)                                                                                                                                                   \
+(                                                                                                                                                                                          \
+    ((packet).status)                                                                                                                                                                      \
+    ?                                                                                                                                                                                      \
+    (                                                                                                                                                                                      \
+        (packet).packet_buffer_len = micro_protocol_build_packet((packet).packet_buffer, (packet).protobuf_buffer, (packet).protobuf_ostream.bytes_written, (packet).command_type)         \
+    )                                                                                                                                                                                      \
+    :                                                                                                                                                                                      \
+    (                                                                                                                                                                                      \
+        (packet).packet_buffer_len = micro_protocol_build_packet((packet).packet_buffer, (const u8*)"ERROR\r\n", strlen("ERROR\r\n"), (packet).command_type)                               \
+    )                                                                                                                                                                                      \
 )
 
 // NOTE(denis): как вариант можно написать так. Я пока думаю.
@@ -109,15 +110,21 @@ typedef double      f64;
 static u8 MICRO_PROTOCOL_DEFAULT_PACKET_BUFFER[MICRO_PROTOCOL_MAX_UART_DATA_PACKET_SIZE] = {0};
 static u8 MICRO_PROTOCOL_DEFAULT_PAYLOAD_BUFFER[MAX_PAYLOAD_SIZE] = {0};
 
-typedef struct Micro_Protocol_Packet
+typedef struct Micro_Protocol_Build_Context
 {
     u8 *packet_buffer;                   // Буфер для всего пакета.
     u8 *protobuf_buffer;                 // Буфер для protobuf.
     size_t packet_buffer_len;                       
     size_t protobuf_buffer_size;         // Для protobuf нужна информация о размере буфера. При создании структуры нужно заранее ее заполнить.
     pb_ostream_t protobuf_ostream;       // Private.
-    u16 command_type;                    // Private. 
-    bool status;
+    u16 command_type;                    
+    bool status;                         // Private.
+} Micro_Protocol_Build_Context;
+
+typedef struct Micro_Protocol_Packet
+{
+    u8 *Data;
+    size_t Len;
 } Micro_Protocol_Packet;
 
 /* Functions */

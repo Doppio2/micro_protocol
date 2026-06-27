@@ -33,6 +33,14 @@ void print_telemetry_data(Telemetry *telemetry)
     printf("Telemetry.power_monitor_current: %f\n", telemetry->power_monitor.current);
 }
 
+void get_cmd_type_constants()
+{
+    printf("TypeByte macros: %02X\n", CMD_GT);
+    printf("TypeByte macros: %02X\n", CMD_UF);
+    printf("TypeByte macros: %02X\n", CMD_TC);
+    printf("TypeByte macros: %02X\n", CMD_HC);
+}
+
 void print_raw_packet(Micro_Protocol_Build_Context *packet)
 {
     printf("Packet(%d bytes)", (int)packet->packet_buffer_len);
@@ -81,59 +89,42 @@ int main()
     // В то время как protobuf_buffer_size нужно указывать вручную, т.к функции pb_encode нужна информация и том, сколько байт нужно кодировать.
     // 
     //
-    MicroProtocolInitBuffersByDefault(packet);
+    MicroProtocolInitWriteBuffers(packet);
 
-
-    // 4. Дальше нам нужно заполнить эту структуру остальными данными.
-    // Далется это через макрос MicroProtocolFillPacket. 
-    // Он не зависит от того, какой тип структуры вы хотите сериализировать т.к передаете название этого типа.
-    MicroProtocolFillPacket(packet,                                     // Передаем только что созданный пакет.
-                            Telemetry,                                  // Тип структуры, которую будем кодировать.
-                            telemetry,                                  // Структура с данными.
-                            CMD_GT);                                    // Тип команды. Варианты типов прописаны в HEADER.
-
-    // 5. Самая функция сборки пакета в бинарный вид. 
-    // На самом деле это тоже макрос. Он обертывает реальную функцию micro_protocol_build_packet.
-    // Сама функция заполняет на основе поля status структуры Micro_Protocol_Packet 
-    // кодирает либо сообщение с ошибкой, либо нужную структуру. 
-    MicroProtocolBuildPacket(packet);
+    // 5. Теперь мы можем собрать пакет. Функция MicroProtocolBuildPacket(которая является макросом-оберткой для функции micro_protocol_build_packet.
+    // Заполняет структуру packet нужными данными и собирает пакет, который затем можно отправить на устройство.
+    // P.S: В данный момент это работает как макрос, но есть вариант сделать из этого inline функцию.
+    MicroProtocolBuildPacket(packet, Telemetry, telemetry, CMD_GT);
 
     // Вывод.
     print_raw_packet(&packet);
 
     // Парсинг данных.
 
-    // Получаем наши данные. (В идеяле тот должен пример с передачей данных 
+    // 1. Получаем наши данные. (В идеяле тот должен пример с передачей данных 
     // по сокетам, но т.к пока этого нет, просто использует только что созданный.
+    // Пока что имитируем передачу.
+    Micro_Protocol_Packet recieved_packet = {0};
+    recieved_packet.data = packet.packet_buffer;
+    recieved_packet.len = packet.packet_buffer_len;
 
-    // Инициализируем штуки, которые нам нужны для парсинга данных.
-    size_t payload_len = 0;
-    uint8_t *payload_pt = micro_protocol_packet_parsing(packet.packet_buffer, packet.packet_buffer_len, &payload_len);
-    size_t data_len = 0;
-    uint8_t *data_pt = micro_protocol_get_data_point_from_payload(payload_pt, payload_len, &data_len); // data from PAYLOAD
+    // 2. Вызываем функцию для парсинга. Перед этим нулем нужно инициализировать структуру Micro_Protocol_Payload
+    Micro_Protocol_Payload payload = {0};
+    micro_protocol_packet_parsing(&payload, recieved_packet); 
 
-    for(int index = 0; index < data_len; index++)
-    {
-        printf("%02X ", data_pt[index]);
-    }
-    printf("\n");
-
-
-    // Декодируем там и т.д
-    pb_istream_t istream;
-    if(data_pt != NULL)
-    {
-        istream = pb_istream_from_buffer(data_pt, data_len);
-    }
-
+    // 3. Дессериализуем.
+    // Создаем структуру для данных и структуру для вспомогательных данных сереализации.
     Telemetry telemetry_output = Telemetry_init_zero;
+    Micro_Protocol_Deserialize_Result deserialized = {0};
 
-    if (data_pt != NULL)
+    // 4. Вызываем макрос, перадв ему вспомогательную стуктуру, тип структуры, в которой будуот хранится данные.
+    // Структуру с данными и payload.
+    MicroProtocolDeserialize(deserialized, Telemetry, telemetry_output, payload);
+
+    // Отправляем данные.
+    if(deserialized.status)
     {
-        if (pb_decode(&istream, Telemetry_fields, &telemetry_output) == true)
-        {
-            print_telemetry_data(&telemetry_output);
-        }
+        print_telemetry_data(&telemetry_output);
     }
 
     return 0;

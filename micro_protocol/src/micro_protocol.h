@@ -28,40 +28,21 @@
 #define MIN_PACKET_SIZE (HEADER_SIZE + TYPE_BYTES + CRC16_BYTES)       // Минимальная длинна пакета(protobuf данные отсутствуют) 
 #define MAX_PAYLOAD_SIZE (MAX_PACKET_SIZE - HEADER_SIZE - CRC16_BYTES) // Максимальный допустимый размер protobuf данные + TYPE_LENGTH.
 
-// Типы сообщения в s16 в little endian.
-#define COMMAND_TYPE_CMD_NONE 0
-#define COMMAND_TYPE_CMD_GET_TELEMETRY     ((u16)(('T' << 8) | 'G'))     // GT: Get Telemetry. Запрос телеметрии
-#define COMMAND_TYPE_CMD_UPDATE_FIRMWARE   ((u16)(('F' << 8) | 'U'))     // UF: Update Firmware. Обновление прошивки
-#define COMMAND_TYPE_CMD_THRUSTERS_CONTROL ((u16)(('C' << 8) | 'T'))     // TC: Thrusters Control. Управление движителями ДРК
-#define COMMAND_TYPE_CMD_HARDWARE_CONTROL  ((u16)(('C' << 8) | 'H'))     // HC: Hardware Control. Управление группой периферийных ШИМ-устройств
-
-// NOTE(denis): хэлперы, чтоб много не писать. Могу сразу сразу оставить нижний вариант.
-// Сделал больше для документации.
-#define CMD_NONE COMMAND_TYPE_CMD_NONE 
-#define CMD_GT   COMMAND_TYPE_CMD_GET_TELEMETRY     
-#define CMD_UF   COMMAND_TYPE_CMD_UPDATE_FIRMWARE   
-#define CMD_TC   COMMAND_TYPE_CMD_THRUSTERS_CONTROL 
-#define CMD_HC   COMMAND_TYPE_CMD_HARDWARE_CONTROL  
-
 // Использовать, если нужны значения буфером packet и payload по-умолчанию.
-#define MicroProtocolInitBuffersByDefault(packet)                                  \
+#define MicroProtocolInitWriteBuffers(packet)                                      \
 (                                                                                  \
     (packet).packet_buffer = MICRO_PROTOCOL_DEFAULT_PACKET_BUFFER,                 \
     (packet).protobuf_buffer = MICRO_PROTOCOL_DEFAULT_PAYLOAD_BUFFER,              \
     (packet).protobuf_buffer_size = sizeof(MICRO_PROTOCOL_DEFAULT_PAYLOAD_BUFFER)  \
 )                                                                                  \
 
-// NOTE(denis): Заполнение структуры
-#define MicroProtocolFillPacket(packet, type, data_struct, command)                                                  \
-(                                                                                                                    \
+// Сборка пакета.
+// NOTE(denis): лучше написать inline функцию.
+#define MicroProtocolBuildPacket(packet, type, data_struct, command)                                                                                                                                                   \
+(                                                                                                                                                                                          \
     ((packet).command_type) = (command),                                                                             \
     ((packet).protobuf_ostream = pb_ostream_from_buffer((packet).protobuf_buffer, (packet).protobuf_buffer_size)),   \
-    ((packet).status = pb_encode(&(packet).protobuf_ostream, type##_fields, &(data_struct)))                         \
-)
-
-// Сборка пакета.
-#define MicroProtocolBuildPacket(packet)                                                                                                                                                   \
-(                                                                                                                                                                                          \
+    ((packet).status = pb_encode(&(packet).protobuf_ostream, type##_fields, &(data_struct))),                        \
     ((packet).status)                                                                                                                                                                      \
     ?                                                                                                                                                                                      \
     (                                                                                                                                                                                      \
@@ -73,25 +54,17 @@
     )                                                                                                                                                                                      \
 )
 
-// NOTE(denis): как вариант можно написать так. Я пока думаю.
-// Как лучше реально не знаю.
-/*
-#define MicroProtocolFillPacket(packet, packet_buffer, protobuf_buffer, type, data_struct, command)         \
-do                                                                                                          \
-{                                                                                                           \
-    (packet).command_type = (command);                                                                      \
-    (packet).bytes = (packet_buffer);                                                                         \
-    (packet).protobuf_buffer = (protobuf_buffer);                                                            \
-    (packet).protobuf_ostream = pb_ostream_from_buffer((packet).protobuf_buffer, sizeof((protobuf_buffer))); \
-    (packet).status = pb_encode(&(packet).protobuf_ostream, type##_fields, &(data_struct)); \
-} while(0)
-
-#define MicroProtocolInitBuffersByDefault(packet) \
-do { \
-    (packet).packet_buffer = MICRO_PROTOCOL_DEFAULT_PACKET_BUFFER; \
-    (packet).protobuf_buffer = MICRO_PROTOCOL_DEFAULT_PAYLOAD_BUFFER; \
-} while(0)
-*/
+#define MicroProtocolDeserialize(deserialized, type, data_struct, payload) \
+do                                                                         \
+{                                                                          \
+    if ((payload).data != NULL)                                            \
+    {                                                                      \
+        (deserialized).istream = pb_istream_from_buffer(                   \
+            (payload).data, (payload).data_len);                           \
+        (deserialized).status = pb_decode(                                 \
+            &(deserialized).istream, type##_fields, &(data_struct));       \
+    }                                                                      \
+} while (0)
 
 /* Types */
 typedef int8_t      s8;
@@ -106,6 +79,13 @@ typedef uint64_t    u64;
 
 typedef float       f32;
 typedef double      f64;
+
+/* Constants */
+const u16 CMD_NONE = 0x0000; 
+const u16 CMD_GT   = 0x5447;   // GT: Get Telemetry. Запрос телеметрии
+const u16 CMD_UF   = 0x4655;   // UF: Update Firmware. Обновление прошивки
+const u16 CMD_TC   = 0x4354;   // TC: Thrusters Control. Управление движителями ДРК
+const u16 CMD_HC   = 0x4348;   // HC: Hardware Control. Управление группой периферийных ШИМ-устройств
 
 static u8 MICRO_PROTOCOL_DEFAULT_PACKET_BUFFER[MICRO_PROTOCOL_MAX_UART_DATA_PACKET_SIZE] = {0};
 static u8 MICRO_PROTOCOL_DEFAULT_PAYLOAD_BUFFER[MAX_PAYLOAD_SIZE] = {0};
@@ -123,21 +103,32 @@ typedef struct Micro_Protocol_Build_Context
 
 typedef struct Micro_Protocol_Packet
 {
-    u8 *Data;
-    size_t Len;
+    u8 *data;
+    size_t len;
 } Micro_Protocol_Packet;
 
+typedef struct Micro_Protocol_Payload
+{
+    u8 *data;
+    size_t data_len;
+    u16 cmd_type;
+} Micro_Protocol_Payload;
+
+typedef struct Micro_Protocol_Deserialize_Result 
+{
+    bool status;
+    pb_istream_t istream;        // Private.
+} Micro_Protocol_Deserialize_Result; 
+
 /* Functions */
-// CRC16
-u16 crc16(const u8 *data, size_t len);
-u16 crc16_lookup_table(const u8 *data, size_t len);
-u8 *micro_protocol_packet_parsing(u8 *packet, size_t packet_len, 
-                                  size_t *payload_len);
-u8 *micro_protocol_get_data_point_from_payload(u8 *payload, size_t payload_len,
-                                               size_t protobuf_data_len);
+inline u16 crc16(const u8 *data, size_t len);
+static inline uint8_t *find_sync_sequence(uint8_t *buffer, size_t buffer_len);
+int micro_protocol_packet_parsing(Micro_Protocol_Payload *payload, Micro_Protocol_Packet packet);
+inline int micro_protocol_get_data_point_from_payload(u8 **payload, size_t *payload_len);
 size_t micro_protocol_get_packet_size(size_t protobuf_data);
 size_t micro_protocol_build_packet(u8 *packet_buffer, const u8 *protobuf_data,
                                    size_t protobuf_data_len, u16 message_type);
+inline size_t micro_protocol_get_packet_size(size_t data_len);
 
 
 #endif 

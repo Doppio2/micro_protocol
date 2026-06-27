@@ -148,63 +148,70 @@ size_t micro_protocol_build_packet(u8 *packet_buffer, const u8 *protobuf_data,
  * @param packet указатель на пришедший пакета
  * @param packet_len длина пришедшего пакета
  * @param payload_len запишется длина блока данных PAYLOAD
- * @return указатель на начало блока PAYLOAD. NULL в случае ошибки
+ * @return статус парсинга. 
  */
-u8 *micro_protocol_packet_parsing(u8 *packet, size_t packet_len, 
-                                  size_t *payload_len)
+
+int micro_protocol_packet_parsing(Micro_Protocol_Payload *payload, 
+                                  Micro_Protocol_Packet packet)
 {
-    printf("Bytes read: %ld\n", packet_len);
+    printf("Bytes read: %ld\n", packet.len);
     // Порядок байтов Little endian.
 
     // 1. Проверяем длинну принятых байт.
-    if(packet_len < MIN_PACKET_SIZE || packet_len > MAX_PACKET_SIZE)
+    if(packet.len < MIN_PACKET_SIZE || packet.len > MAX_PACKET_SIZE)
     {
-        return NULL;
+        return 0;
     }
 
     // 2. Ищем синхропосылку.
-    u8 *sync_pos = find_sync_sequence(packet, packet_len);
+    u8 *sync_pos = find_sync_sequence(packet.data, packet.len);
     if(!sync_pos)
     {
-        return NULL;
+        return 0;
     }
     u8 *current_packet_pos = sync_pos;      // Обновляем указатель на начало данных до начала синхропосылки.
 
     // 3. Размер доступных байт пакета.
-    size_t packet_bytes_available = packet_len - (sync_pos - packet);
+    size_t packet_bytes_available = packet.len - (sync_pos - packet.data);
     // 4. Проверяем текущую длинну пакета. Она должна быть размером с HEADER_SIZE
 	if(packet_bytes_available < HEADER_SIZE)
     {
-		return NULL;
+		return 0;
     }
 
 	// 5. Читаем длину блока полезных данных PAYLOAD, включающий тип пакета и бинарные данные в формате Protobuf
     // payload_len мы передали как указатель в функцию
-    *payload_len = (current_packet_pos[4] << 8) | current_packet_pos[3];      // Length_LowByte_Length_HighByte
-	size_t total_packet_len = HEADER_SIZE + *payload_len + CRC16_BYTES;
+    payload->data_len = (current_packet_pos[4] << 8) | current_packet_pos[3];      // Length_LowByte_Length_HighByte
+	size_t total_packet_len = HEADER_SIZE + payload->data_len + CRC16_BYTES;
 
     // 6. Если нам доступно меньше, чем общая длинна пакета, то 
     // возвращаем NULL.
     if(packet_bytes_available < total_packet_len)
     {
-        return NULL;
+        return 0;
     }
 
+    // 6. Записываем тип команды.
+    payload->cmd_type = (current_packet_pos[6] << 8) | current_packet_pos[5];
+
     // 7. Вычисляем и получаем crc пакета.
-    u8 *crc_start = current_packet_pos + HEADER_SIZE + *payload_len;
+    u8 *crc_start = current_packet_pos + HEADER_SIZE + payload->data_len;
 	u16 received_crc = (crc_start[1] << 8) | crc_start[0];
 
     // 8. Вычисляем crc пакета. Контрольная сумма должна совпадать.
-    u16 calcuated_crc = crc16(current_packet_pos, HEADER_SIZE + *payload_len);
+    u16 calcuated_crc = crc16(current_packet_pos, HEADER_SIZE + payload->data_len);
     if(received_crc != calcuated_crc)
     {
-        return NULL;
+        return 0;
     }
 
     // 9. Возвращаем указатель на начало блока payload.
-    u8 *payload = current_packet_pos + HEADER_SIZE; 
+    payload->data = current_packet_pos + HEADER_SIZE; 
 
-    return payload;
+    // 10. Сдвигаем все данные в структуре, чтобы они указывали на данные protobuf буфера.
+    micro_protocol_get_data_point_from_payload(&payload->data, &payload->data_len);
+
+    return 1;
 }
 
 /**
@@ -214,16 +221,18 @@ u8 *micro_protocol_packet_parsing(u8 *packet, size_t packet_len,
  * @param protobuf_data_len запишется длина блока данных
  * @return указатель на данные
  */
-inline u8 *micro_protocol_get_data_point_from_payload(u8 *payload, size_t payload_len, 
-                                               size_t *protobuf_data_len)
+inline int micro_protocol_get_data_point_from_payload(u8 **payload, size_t *payload_len)
 {
-    if(payload_len <= 2 || payload == NULL)
+    if(*payload_len <= 2 || *payload == NULL)
     {
-        return NULL;
+        return 0;
     }
 
-    *protobuf_data_len = payload_len - TYPE_BYTES;
-    return payload + TYPE_BYTES;
+    size_t temp_data_len = *payload_len;
+    *payload_len = temp_data_len - TYPE_BYTES;
+    *payload += TYPE_BYTES;
+
+    return 1;
 }
 
 // NOTE(denis): в примере окружения было 0 вызовов.

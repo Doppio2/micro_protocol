@@ -58,14 +58,14 @@
     ((packet).status)                                                                                               \
     ?                                                                                                               \
     (                                                                                                               \
-        (packet).packet_buffer_len = _micro_protocol_build_packet((packet).packet_buffer,                            \
+        (packet).packet_buffer_len = _micro_protocol_build_packet((packet).packet_buffer,                           \
                                                                  (packet).protobuf_buffer,                          \
                                                                  (packet).protobuf_ostream.bytes_written,           \
                                                                  (packet).command_type)                             \
     )                                                                                                               \
     :                                                                                                               \
     (                                                                                                               \
-        (packet).packet_buffer_len = _micro_protocol_build_packet((packet).packet_buffer,                            \
+        (packet).packet_buffer_len = _micro_protocol_build_packet((packet).packet_buffer,                           \
                                                                  (const u8*)"ERROR\r\n",                            \
                                                                  strlen("ERROR\r\n"),                               \
                                                                  (packet).command_type)                             \
@@ -81,16 +81,17 @@
 
  После вызова вы получить packet структуру со статусом сборки и длинной записанных данных.
  */
-#define MicroProtocolDeserialize(deserialized, type, data_struct, payload) \
-do                                                                         \
-{                                                                          \
-    if ((payload).data != NULL)                                            \
-    {                                                                      \
-        (deserialized).istream = pb_istream_from_buffer(                   \
-            (payload).data, (payload).data_len);                           \
-        (deserialized).status = pb_decode(                                 \
-            &(deserialized).istream, type##_fields, &(data_struct));       \
-    }                                                                      \
+
+#define micro_protocol_deserialize(deserialized, type, data_struct, payload) \
+do                                                                           \
+{                                                                            \
+    if ((payload).data != NULL)                                              \
+    {                                                                        \
+        (deserialized).istream = pb_istream_from_buffer(                     \
+            (payload).data, (payload).data_len);                             \
+        (deserialized).status = pb_decode(                                   \
+            &(deserialized).istream, type##_fields, &(data_struct));         \
+    }                                                                        \
 } while (0)
 
 /* Types */

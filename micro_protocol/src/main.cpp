@@ -111,7 +111,7 @@ int main()
 
     // 4. Вызываем макрос, перадв ему вспомогательную стуктуру, тип структуры, в которой будуот хранится данные.
     // Структуру с данными и payload.
-    MicroProtocolDeserialize(deserialized, Telemetry, telemetry_output, payload);
+    micro_protocol_deserialize(deserialized, Telemetry, telemetry_output, payload);
 
     // Отправляем данные.
     if(deserialized.status)

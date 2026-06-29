@@ -33,14 +33,6 @@ void print_telemetry_data(Telemetry *telemetry)
     printf("Telemetry.power_monitor_current: %f\n", telemetry->power_monitor.current);
 }
 
-void get_cmd_type_constants()
-{
-    printf("TypeByte macros: %02X\n", CMD_GT);
-    printf("TypeByte macros: %02X\n", CMD_UF);
-    printf("TypeByte macros: %02X\n", CMD_TC);
-    printf("TypeByte macros: %02X\n", CMD_HC);
-}
-
 void print_raw_packet(Micro_Protocol_Build_Context *packet)
 {
     printf("Packet(%d bytes)", (int)packet->packet_buffer_len);
@@ -89,12 +81,12 @@ int main()
     // В то время как protobuf_buffer_size нужно указывать вручную, т.к функции pb_encode нужна информация и том, сколько байт нужно кодировать.
     // 
     //
-    MicroProtocolInitWriteBuffers(packet);
+    micro_protocol_init_write_buffers(packet);
 
     // 5. Теперь мы можем собрать пакет. Функция MicroProtocolBuildPacket(которая является макросом-оберткой для функции micro_protocol_build_packet.
     // Заполняет структуру packet нужными данными и собирает пакет, который затем можно отправить на устройство.
     // P.S: В данный момент это работает как макрос, но есть вариант сделать из этого inline функцию.
-    MicroProtocolBuildPacket(packet, Telemetry, telemetry, CMD_GT);
+    micro_protocol_build_packet(packet, Telemetry, telemetry, CMD_GT);
 
     // Вывод.
     print_raw_packet(&packet);

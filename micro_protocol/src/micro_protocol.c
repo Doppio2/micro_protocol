@@ -10,7 +10,8 @@
 #include "nanopb/pb_decode.c"
 #include "nanopb/pb_common.c"
 
-// TODO(denis): я понятия не имею, как это работает.
+// NOTE(denis): я понятия не имею, как это работает.
+// Но оно работает....
 static const u16 crc_table[256] = 
 {
     0x0000,0xC0C1,0xC181,0x0140,0xC301,0x03C0,0x0280,0xC241,
@@ -47,9 +48,13 @@ static const u16 crc_table[256] =
     0x8201,0x42C0,0x4380,0x8341,0x4100,0x81C1,0x8081,0x4040
 };
 
-
-// NOTE(denis): версия с использованием lookup таблицы.
-// Я понятия не имею как это работает.... Но работает быстрее.
+/**
+ * @brief Находит синхропосылку в переданном пакете.
+ *
+ * @param[in]  data 		        Данные, из которых нужно считать контрольную сумму.
+ * @param[in]  data_len 	        Длинна данных.
+ * @return u16              	    Контрольная сумма.
+ */
 inline u16 crc16(const u8 *data, size_t len)
 {
 	u16 crc = 0xFFFF; // Инициализация CRC
@@ -63,7 +68,14 @@ inline u16 crc16(const u8 *data, size_t len)
     return crc;
 }
 
-static inline uint8_t *find_sync_sequence(uint8_t *buffer, size_t buffer_len)
+/**
+ * @brief Находит синхропосылку в переданном пакете.
+ *
+ * @param[in]  buffer 		        Буфер данных, в котором нужно найти синхропосылку
+ * @param[in]  buffer_len 	        Длинна буфера.
+ * @return u8*              	    Указатель на синхропосылку в буфере.
+ */
+static inline u8 *find_sync_sequence(uint8_t *buffer, size_t buffer_len)
 {
     if(buffer_len < SYNC_SEQ_BYTES)
     {
@@ -94,9 +106,9 @@ static inline uint8_t *find_sync_sequence(uint8_t *buffer, size_t buffer_len)
  * @param[in]  protobuf_data 		Указатель на данные блока полезной нагрузки (без типа пакета)
  * @param[in]  protobuf_data_len 	Длина данных полезной нагрузки (без типа пакета)
  * @param[in]  message_type      	Тип сообщения в 16 ричном числе(например,COMMAND_TYPE_CMD_UPDATE_FIRMWARE)
- * @return uint16_t              	Общая длина сформированного пакета.
+ * @return size_t                	Общая длина сформированного пакета.
  */
-size_t micro_protocol_build_packet(u8 *packet_buffer, const u8 *protobuf_data,
+size_t _micro_protocol_build_packet(u8 *packet_buffer, const u8 *protobuf_data,
                                    size_t protobuf_data_len, u16 message_type)
 {
     u8 *buffer = packet_buffer; 
@@ -141,20 +153,21 @@ size_t micro_protocol_build_packet(u8 *packet_buffer, const u8 *protobuf_data,
 	return (u16)(buffer - packet_buffer); // Возвращаем общую длину пакета
 }
 
+// TODO(denis): определиться какой код возвращать при ошибках.
+// Мб сделать enum с типами ошибок.
 /**
  * @brief Парсинг пакета данных в соответствии со структурой:
  * [SyncSeq (напр., "ROV")][Length (2 байта)][Type][ProtobufData][CRC (2 байта)]
  * |		    	HEADER			        |		PAYLOAD  	 |
- * @param packet указатель на пришедший пакета
- * @param packet_len длина пришедшего пакета
- * @param payload_len запишется длина блока данных PAYLOAD
- * @return статус парсинга. 
+ * @param payload     Указатель на структуру, содержащую данные payload и тип запроса.
+ * @param packet      Структура, содержащая пакет, который нужно обработать.
+ * @return            статус парсинга. 
  */
 
 int micro_protocol_packet_parsing(Micro_Protocol_Payload *payload, 
                                   Micro_Protocol_Packet packet)
 {
-    printf("Bytes read: %ld\n", packet.len);
+    printf("Bytes read: %zu\n", packet.len);
     // Порядок байтов Little endian.
 
     // 1. Проверяем длинну принятых байт.
@@ -214,12 +227,12 @@ int micro_protocol_packet_parsing(Micro_Protocol_Payload *payload,
     return 1;
 }
 
+// TODO(denis): так же решить, что делать с ошибками.
 /**
  * @brief Извлекает указатель на данныеиз полезной нагрузки данные в соответствии со структурой пакета
- * @param payload указатель на блок полезных данных
+ * @param payload указатель на указатель на блок полезных данных
  * @param payload_len длина PAYLOAD
- * @param protobuf_data_len запишется длина блока данных
- * @return указатель на данные
+ * @param статус ошибки.
  */
 inline int micro_protocol_get_data_point_from_payload(u8 **payload, size_t *payload_len)
 {

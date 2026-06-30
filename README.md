@@ -20,13 +20,15 @@
  
     // 4. Даллее нам нужно указать структуре какие буферы ей использовать для всех данных (packet_buffer) 
     // и для данных, которые выдаст нам protobuf.
-    // В библиотеке есть макрос MicroProtocolInitBufferByDefault, который использует заранее созданные
-    // статичные буферы для packet_buffer и payload_buffer. 
-    // их определение выглядит следующим образом:
+    // В библиотеке есть макрос micro_protocol_init_write_buffer_default, который использует заранее созданный
+    // статичный буфер.
+    // Его определение выглядит следующим образом.
     // 
     // static u8 MICRO_PROTOCOL_DEFAULT_PACKET_BUFFER[MICRO_PROTOCOL_MAX_UART_DATA_PACKET_SIZE] = {0};
-    // static u8 MICRO_PROTOCOL_DEFAULT_PAYLOAD_BUFFER[MAX_PAYLOAD_SIZE] = {0};
-    micro_protocol_init_write_buffers(packet);
+    //
+    // Если вы хотите использовать какой-либо свой буфер, вы можете вызывать micro_protocol_init_write_buffer, передав туда ваш буфер и packet структуру.
+    //
+    micro_protocol_init_write_buffer(packet);
     
     micro_protocol_build_packet(packet, Telemetry, telemetry, CMD_GT); 
     
@@ -83,7 +85,7 @@ int main()
     get_test_telemetry_data(&telemetry);
 
     Micro_Protocol_Build_Context packet = {0};
-    micro_protocol_init_write_buffers(packet); 
+    micro_protocol_init_write_buffers_default(packet); 
     micro_protocol_build_packet(packet, Telemetry, telemetry, CMD_GT); 
 }
 ```
@@ -102,6 +104,15 @@ add_executable(app
 target_include_directories(app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
+```
+
+### Сборка примера
+Для сборки примера на linux:
+``` bash
+cd micro_protocol && build.sh
+
+Для windows:
+cd micro_protocol && build.bat.
 ```
 
 

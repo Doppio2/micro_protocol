@@ -64,24 +64,21 @@ int main()
     //
     // 4. Даллее нам нужно указать структуре какие буферы ей использовать для всех данных (packet_buffer) 
     // и для данных, которые выдаст нам protobuf.
-    // В библиотеке есть макрос MicroProtocolInitBufferByDefault, который использует заранее созданные
-    // статичные буферы для packet_buffer и payload_buffer. 
-    // их определение выглядит следующим образом:
+    // В библиотеке есть макрос micro_protocol_init_write_buffer_default, который использует заранее созданный
+    // статичный буфер.
+    // Его определение выглядит следующим образом.
     // 
     // static u8 MICRO_PROTOCOL_DEFAULT_PACKET_BUFFER[MICRO_PROTOCOL_MAX_UART_DATA_PACKET_SIZE] = {0};
-    // static u8 MICRO_PROTOCOL_DEFAULT_PAYLOAD_BUFFER[MAX_PAYLOAD_SIZE] = {0};
     //
-    // Если вы хотите использовать вручную настроенный буфер, то заранее создайте его и заполните поле через:
-    // 
-    // packet.packet_buffer   =  ваш_буфер для packet   
-    // packet.protobuf_buffer =  ваш_буфер для prortobuf.
-    // packet.protobuf_buffer_size  = размер вашего буфера для protobuf.
+    // Если вы хотите использовать какой-либо свой буфер, вы можете вызывать micro_protocol_init_write_buffer, передав туда ваш буфер и packet структуру.
     //
-    // Примечание: поле .packet_buffer.len заполняется автоматически и является по-сути результатом функции для сборки пакета в бинарный формат
-    // В то время как protobuf_buffer_size нужно указывать вручную, т.к функции pb_encode нужна информация и том, сколько байт нужно кодировать.
-    // 
+    // Примечание: Protbuf буфер является указателем на начало блока полезных данных. Это не отдельный буфер.
+    // Он вычисляется как (packet).protobuf_buffer = packet_buffer + HEADER_SIZE + TYPE_BYTES.
+    // А его длинна равна MAX_PAYLOAD_SIZE. Это максимальная возможная длинна payload, а не фактическая длинна данных payload.
+    // Фактическую длинну закодированных данных можно получить через: packet.protobuf_ostream.bytes_written.
+    // Возможно, стоит вынести его в отдельное поле для структуры, если нужна будет потребность.
     //
-    micro_protocol_init_write_buffers(packet);
+    micro_protocol_init_write_buffer_default(packet);
 
     // 5. Теперь мы можем собрать пакет. Функция MicroProtocolBuildPacket(которая является макросом-оберткой для функции micro_protocol_build_packet.
     // Заполняет структуру packet нужными данными и собирает пакет, который затем можно отправить на устройство.

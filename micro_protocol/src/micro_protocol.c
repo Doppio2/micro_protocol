@@ -108,8 +108,8 @@ static inline u8 *find_sync_sequence(uint8_t *buffer, size_t buffer_len)
  * @param[in]  message_type      	Тип сообщения в 16 ричном числе(например,COMMAND_TYPE_CMD_UPDATE_FIRMWARE)
  * @return size_t                	Общая длина сформированного пакета.
  */
-size_t _micro_protocol_build_packet(u8 *packet_buffer, const u8 *protobuf_data,
-                                   size_t protobuf_data_len, u16 message_type)
+size_t _micro_protocol_build_packet(u8 *packet_buffer, size_t protobuf_data_len, 
+                                    CMD_Type message_type, bool status)
 {
     u8 *buffer = packet_buffer; 
 
@@ -133,14 +133,26 @@ size_t _micro_protocol_build_packet(u8 *packet_buffer, const u8 *protobuf_data,
     // после преобразования снизу в буфере будет 'G', 'T'.
     buffer[0] = u8(message_type & 0xFF);
     buffer[1] = u8((message_type >> 8) & 0xFF);
-    buffer += LENGTH_BYTES;
+    buffer += TYPE_BYTES;
 
+    // Если статус отрицательный, то записываем error сообщение.
+    // В противном мы можем ничего не писать. Данные уже лежат в packet_buffer
+    // И нам нужно лишь сдвинуть указатель на CRC байты.
+    if(!status)
+    {
+        memcpy(buffer, (const u8*)"ERROR\r\n", protobuf_data_len);
+    }
+    buffer += protobuf_data_len;
+
+
+    /*
     // 4. Копируем полезаные данные payload(protobuf_data).
     if(protobuf_data_len > 0 && protobuf_data != NULL)
     {
         memcpy(buffer, protobuf_data, protobuf_data_len);
         buffer += protobuf_data_len;
     }
+    */
 
     // 5. Вычисляем CRC16 контрольную сумму от всего загаловка + полезной нагрузки.
     u16 crc = crc16(packet_buffer, (buffer - packet_buffer));

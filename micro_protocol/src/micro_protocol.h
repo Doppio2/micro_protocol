@@ -34,11 +34,20 @@
  *
  * @param[out] packet  Пакет, для которого нужно инициализировать буферы записи.
  */
-#define micro_protocol_init_write_buffers(packet)                                  \
+#define micro_protocol_init_write_buffer_default(packet)                           \
 (                                                                                  \
     (packet).packet_buffer = MICRO_PROTOCOL_DEFAULT_PACKET_BUFFER,                 \
-    (packet).protobuf_buffer = MICRO_PROTOCOL_DEFAULT_PAYLOAD_BUFFER,              \
-    (packet).protobuf_buffer_size = sizeof(MICRO_PROTOCOL_DEFAULT_PAYLOAD_BUFFER)  \
+    (packet).protobuf_buffer = MICRO_PROTOCOL_DEFAULT_PACKET_BUFFER +              \
+                               HEADER_SIZE + TYPE_BYTES,                           \
+    (packet).protobuf_buffer_size = MAX_PAYLOAD_SIZE                               \
+)                                                                                  \
+
+#define micro_protocol_init_write_buffer(packet_buffer, packet)                    \
+(                                                                                  \
+    (packet).packet_buffer = (packet_buffer),                                      \
+    (packet).protobuf_buffer = (packet_buffer) +                                   \
+                               HEADER_SIZE + TYPE_BYTES,                           \
+    (packet).protobuf_buffer_size = MAX_PAYLOAD_SIZE                               \
 )                                                                                  \
 
 /**
@@ -59,16 +68,16 @@
     ?                                                                                                               \
     (                                                                                                               \
         (packet).packet_buffer_len = _micro_protocol_build_packet((packet).packet_buffer,                           \
-                                                                 (packet).protobuf_buffer,                          \
                                                                  (packet).protobuf_ostream.bytes_written,           \
-                                                                 (packet).command_type)                             \
+                                                                 (packet).command_type,                             \
+                                                                 (packet).status)                                   \
     )                                                                                                               \
     :                                                                                                               \
     (                                                                                                               \
         (packet).packet_buffer_len = _micro_protocol_build_packet((packet).packet_buffer,                           \
-                                                                 (const u8*)"ERROR\r\n",                            \
                                                                  strlen("ERROR\r\n"),                               \
-                                                                 (packet).command_type)                             \
+                                                                 (packet).command_type,                             \
+                                                                 (packet).status)                                   \
     )                                                                                                               \
 )
 
@@ -108,25 +117,28 @@ typedef uint64_t    u64;
 typedef float       f32;
 typedef double      f64;
 
-/* Constants */
-// Типы команд.
-const u16 CMD_NONE = 0x0000;
-const u16 CMD_GT   = 0x5447;   // GT: Get Telemetry. Запрос телеметрии
-const u16 CMD_UF   = 0x4655;   // UF: Update Firmware. Обновление прошивки
-const u16 CMD_TC   = 0x4354;   // TC: Thrusters Control. Управление движителями ДРК
-const u16 CMD_HC   = 0x4348;   // HC: Hardware Control. Управление группой периферийных ШИМ-устройств
+typedef u16 CMD_Type;
+// NOTE(denis): безымянный enum. Для большей явности сделано, чтобы 
+// Было видно, что тип команды занимает ровно 2 байта.
+enum 
+{
+    CMD_NONE = 0,
+    CMD_GT,
+    CMD_UF, 
+    CMD_TC,
+    CMD_HC
+};
 
 static u8 MICRO_PROTOCOL_DEFAULT_PACKET_BUFFER[MICRO_PROTOCOL_MAX_UART_DATA_PACKET_SIZE] = {0};
-static u8 MICRO_PROTOCOL_DEFAULT_PAYLOAD_BUFFER[MAX_PAYLOAD_SIZE] = {0};
 
 // Контекст для построения пакета.
 typedef struct Micro_Protocol_Build_Context
 {
     u8 *packet_buffer;                   // Буфер для всего пакета.
-    u8 *protobuf_buffer;                 // Буфер для protobuf.
+    u8 *protobuf_buffer;                 // Указатель на начало буфера дынных protobuf.
     size_t packet_buffer_len;                       
     size_t protobuf_buffer_size;         // Для protobuf нужна информация о размере буфера. При создании структуры нужно заранее ее заполнить.
-    pb_ostream_t protobuf_ostream;       // Поток, нужный для протобафа.
+    pb_ostream_t protobuf_ostream;       //  поток, нужный для протобафа.
     u16 command_type;                    // Тип команды.                   
     bool status;                         // Статус сборки. 
 } Micro_Protocol_Build_Context;
@@ -160,7 +172,7 @@ int micro_protocol_packet_parsing(Micro_Protocol_Payload *payload, Micro_Protoco
 inline int micro_protocol_get_data_point_from_payload(u8 **payload, size_t *payload_len);
 size_t micro_protocol_get_packet_size(size_t protobuf_data);
 size_t _micro_protocol_build_packet(u8 *packet_buffer, const u8 *protobuf_data,
-                                   size_t protobuf_data_len, u16 message_type);
+                                   size_t protobuf_data_len, CMD_Type message_type);
 inline size_t micro_protocol_get_packet_size(size_t data_len);
 
 
